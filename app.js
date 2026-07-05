@@ -3,6 +3,7 @@ const DB_VERSION = 1;
 const ASSET_STORE = "assets";
 const DRAFT_STORE = "drafts";
 const DRAFT_ID = "current-draft";
+const BUILD_INFO = window.__BUILD_INFO__ || { commit: "local", builtAt: "local" };
 
 const categories = [
   ["all", "All"],
@@ -185,6 +186,7 @@ async function init() {
   render();
   registerServiceWorker();
   updateStorageStatus();
+  updateBuildStatus();
 }
 
 function bindGlobalEvents() {
@@ -203,6 +205,12 @@ function bindGlobalEvents() {
 function updateStorageStatus() {
   const status = document.getElementById("storageStatus");
   status.textContent = navigator.onLine ? "Saved on this device" : "Offline and saved locally";
+}
+
+function updateBuildStatus() {
+  const status = document.getElementById("buildStatus");
+  const commit = BUILD_INFO.commit || "local";
+  status.textContent = `Build ${commit}`;
 }
 
 function setRoute(route) {

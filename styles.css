@@ -94,6 +94,11 @@ button {
   line-height: 1.2;
 }
 
+#buildStatus {
+  font-size: 0.72rem;
+  opacity: 0.78;
+}
+
 .app-main {
   padding: 16px;
 }
