@@ -186,7 +186,7 @@ async function init() {
   render();
   registerServiceWorker();
   updateStorageStatus();
-  updateBuildStatus();
+  await updateBuildStatus();
 }
 
 function bindGlobalEvents() {
@@ -207,10 +207,20 @@ function updateStorageStatus() {
   status.textContent = navigator.onLine ? "Saved on this device" : "Offline and saved locally";
 }
 
-function updateBuildStatus() {
+async function updateBuildStatus() {
   const status = document.getElementById("buildStatus");
   const commit = BUILD_INFO.commit || "local";
   status.textContent = `Build ${commit}`;
+  if (!navigator.onLine) return;
+
+  try {
+    const response = await fetch("https://api.github.com/repos/sourmilkman/CafeMemeGen/commits/main");
+    if (!response.ok) return;
+    const data = await response.json();
+    if (data.sha) status.textContent = `Build ${data.sha.slice(0, 7)}`;
+  } catch {
+    // The static build info remains visible if GitHub's API is unavailable.
+  }
 }
 
 function setRoute(route) {
