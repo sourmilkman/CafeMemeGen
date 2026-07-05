@@ -544,9 +544,10 @@ function renderPrompt() {
           <h3>Prompt actions</h3>
           <span>${prompt.length.toLocaleString()} characters</span>
         </div>
+        <button class="button primary full" type="button" id="openChatGpt">Copy and Open ChatGPT</button>
         <button class="button danger full" type="button" id="copyPrompt">Copy Prompt</button>
         <button class="button full" type="button" id="goBuilder">Edit in Builder</button>
-        <div class="empty">${selectedAssets().length || "No"} reference assets included.</div>
+        <div class="empty">${selectedAssets().length || "No"} reference assets included. ChatGPT will open in a new tab; paste if the prompt box is empty.</div>
       </div>
       <pre class="prompt-preview">${escapeHtml(prompt)}</pre>
     </div>
@@ -554,6 +555,7 @@ function renderPrompt() {
 }
 
 function bindPromptEvents() {
+  document.getElementById("openChatGpt").addEventListener("click", openChatGptWithPrompt);
   document.getElementById("copyPrompt").addEventListener("click", copyPrompt);
   document.getElementById("goBuilder").addEventListener("click", () => setRoute("builder"));
 }
@@ -707,6 +709,17 @@ async function copyPrompt() {
     textarea.remove();
     showToast("Prompt copied");
   }
+}
+
+async function openChatGptWithPrompt() {
+  const chatWindow = window.open("about:blank", "_blank");
+  await copyPrompt();
+  if (chatWindow) {
+    chatWindow.opener = null;
+    chatWindow.location.href = "https://chatgpt.com/";
+  }
+  else window.location.href = "https://chatgpt.com/";
+  showToast("Prompt copied. Paste it into ChatGPT.");
 }
 
 async function blobToDataUrl(blob) {
