@@ -4,6 +4,9 @@ const ASSET_STORE = "assets";
 const DRAFT_STORE = "drafts";
 const DRAFT_ID = "current-draft";
 const BUILD_INFO = window.__BUILD_INFO__ || { commit: "local", builtAt: "local" };
+const CHATGPT_TARGET_KEY = "ms-meme-studio-chatgpt-target";
+const DEFAULT_CHATGPT_URL = "https://chatgpt.com/";
+const CHATGPT_APP_URL = "chatgpt://";
 
 const categories = [
   ["all", "All"],
@@ -44,6 +47,7 @@ const seedAssets = [
     name: "Cafe Team Character Sheet",
     category: "character",
     description: "Reusable cartoon staff reference with uniform notes and friendly expressions.",
+    imageUrl: "",
     tags: ["team", "uniform", "reference"],
     notes: "Replace with individual character sheets when ready."
   },
@@ -51,6 +55,7 @@ const seedAssets = [
     name: "Coffee Bar Reference",
     category: "location",
     description: "Main cafe counter, pastry case, pickup area, and queue line.",
+    imageUrl: "",
     tags: ["counter", "layout"],
     notes: "Useful when the joke depends on believable cafe geography."
   },
@@ -58,6 +63,7 @@ const seedAssets = [
     name: "WMF Coffee Machine",
     category: "equipment",
     description: "Large espresso machine with milk wand, cups stacked nearby, and cleaning cloth.",
+    imageUrl: "",
     tags: ["coffee", "machine"],
     notes: "Keep scale accurate beside characters."
   },
@@ -65,6 +71,7 @@ const seedAssets = [
     name: "The Last Toastie",
     category: "running-gag",
     description: "A dramatic workplace saga about one remaining toastie at lunch rush.",
+    imageUrl: "",
     tags: ["food", "chaos"],
     notes: "Works well in deadpan or fake advert formats."
   }
@@ -75,7 +82,8 @@ const state = {
   assets: [],
   draft: createEmptyDraft(),
   activeCategory: "all",
-  editingAssetId: null
+  editingAssetId: null,
+  chatgptTarget: loadChatGptTarget()
 };
 
 let dbPromise;
@@ -96,6 +104,23 @@ function createEmptyDraft() {
     createdAt: now,
     updatedAt: now
   };
+}
+
+function loadChatGptTarget() {
+  try {
+    return localStorage.getItem(CHATGPT_TARGET_KEY) || DEFAULT_CHATGPT_URL;
+  } catch {
+    return DEFAULT_CHATGPT_URL;
+  }
+}
+
+function saveChatGptTarget(value) {
+  state.chatgptTarget = value || DEFAULT_CHATGPT_URL;
+  try {
+    localStorage.setItem(CHATGPT_TARGET_KEY, state.chatgptTarget);
+  } catch {
+    // The app still works if browser storage is unavailable.
+  }
 }
 
 function openDb() {
@@ -175,7 +200,7 @@ async function init() {
     const now = new Date().toISOString();
     await Promise.all(
       seedAssets.map((asset) =>
-        saveAsset({ ...asset, id: makeId(), imageBlob: null, createdAt: now, updatedAt: now })
+        saveAsset({ ...asset, imageUrl: asset.imageUrl || "", id: makeId(), imageBlob: null, createdAt: now, updatedAt: now })
       )
     );
     state.assets = await getAllAssets();
@@ -186,7 +211,7 @@ async function init() {
   render();
   registerServiceWorker();
   updateStorageStatus();
-  await updateBuildStatus();
+  updateBuildStatus();
 }
 
 function bindGlobalEvents() {
@@ -207,20 +232,10 @@ function updateStorageStatus() {
   status.textContent = navigator.onLine ? "Saved on this device" : "Offline and saved locally";
 }
 
-async function updateBuildStatus() {
+function updateBuildStatus() {
   const status = document.getElementById("buildStatus");
-  const commit = BUILD_INFO.commit || "local";
-  status.textContent = `Build ${commit}`;
-  if (!navigator.onLine) return;
-
-  try {
-    const response = await fetch("https://api.github.com/repos/sourmilkman/CafeMemeGen/commits/main");
-    if (!response.ok) return;
-    const data = await response.json();
-    if (data.sha) status.textContent = `Build ${data.sha.slice(0, 7)}`;
-  } catch {
-    // The static build info remains visible if GitHub's API is unavailable.
-  }
+  if (!status) return;
+  status.textContent = `Build ${BUILD_INFO.commit || "local"}`;
 }
 
 function setRoute(route) {
@@ -264,11 +279,18 @@ function escapeHtml(value = "") {
 }
 
 function assetThumb(asset) {
+  if (asset.imageUrl) {
+    return `<img src="${escapeHtml(asset.imageUrl)}" alt="" loading="lazy">`;
+  }
   if (asset.imageBlob) {
     const url = URL.createObjectURL(asset.imageBlob);
-    return `<img src="${url}" alt="">`;
+    return `<img src="${url}" alt="" loading="lazy">`;
   }
   return escapeHtml(asset.name.slice(0, 1).toUpperCase());
+}
+
+function hasReferenceImage(asset) {
+  return Boolean(asset.imageUrl || asset.imageBlob);
 }
 
 function tagsHtml(tags = []) {
@@ -323,7 +345,7 @@ function renderLibrary() {
     </div>
     <div class="summary-bar">
       <div class="summary-tile"><strong>${state.assets.length}</strong><span>Assets</span></div>
-      <div class="summary-tile"><strong>${state.assets.filter((asset) => asset.imageBlob).length}</strong><span>Images</span></div>
+      <div class="summary-tile"><strong>${state.assets.filter(hasReferenceImage).length}</strong><span>Images</span></div>
       <div class="summary-tile"><strong>${state.draft.selectedAssetIds.length}</strong><span>Selected</span></div>
     </div>
     <div class="two-column">
@@ -360,6 +382,10 @@ function renderLibrary() {
         <div class="field">
           <label for="assetImage">Image upload</label>
           <input id="assetImage" name="image" type="file" accept="image/*">
+        </div>
+        <div class="field">
+          <label for="assetImageUrl">Public image URL</label>
+          <input id="assetImageUrl" name="imageUrl" type="url" value="${escapeHtml(editing?.imageUrl || "")}" placeholder="https://sourmilkman.github.io/CafeMemeGen/assets/alex.png">
         </div>
         <div class="field">
           <label for="assetNotes">Notes</label>
@@ -419,6 +445,7 @@ function bindLibraryEvents() {
       name: form.get("name").trim(),
       category: form.get("category"),
       description: form.get("description").trim(),
+      imageUrl: form.get("imageUrl").trim(),
       tags: form
         .get("tags")
         .split(",")
@@ -473,7 +500,8 @@ function renderBuilder() {
             ${renderSelect("tone", "Tone", tones, state.draft.tone)}
           </div>
         </form>
-        <button class="button danger full" type="button" id="copyFromBuilder">Copy Prompt</button>
+        <button class="button danger full" type="button" id="copyOpenFromBuilder">Copy Prompt & Open ChatGPT</button>
+        <button class="button full" type="button" id="copyFromBuilder">Copy Prompt Only</button>
       </div>
       <div class="panel">
         <div class="panel-title">
@@ -510,10 +538,17 @@ function renderAssetSelector(category) {
     <div class="panel-title"><h3>${categoryLabel(category)}</h3></div>
     ${assets
       .map(
-        (asset) => `<label class="selector-row">
-          <input type="checkbox" value="${asset.id}" data-select-asset ${state.draft.selectedAssetIds.includes(asset.id) ? "checked" : ""}>
-          <span><strong>${escapeHtml(asset.name)}</strong><span>${escapeHtml(asset.description || categoryLabel(asset.category))}</span></span>
-        </label>`
+        (asset) => {
+          const selected = state.draft.selectedAssetIds.includes(asset.id);
+          return `<label class="selector-row ${selected ? "selected" : ""}">
+            <input type="checkbox" value="${asset.id}" data-select-asset ${selected ? "checked" : ""}>
+            <span>
+              <strong>${escapeHtml(asset.name)}</strong>
+              <span>${escapeHtml(asset.description || categoryLabel(asset.category))}</span>
+              ${selected && hasReferenceImage(asset) ? `<span class="selector-preview">${assetThumb(asset)}</span>` : ""}
+            </span>
+          </label>`;
+        }
       )
       .join("")}
   </div>`;
@@ -538,6 +573,7 @@ function bindBuilderEvents() {
     });
   });
 
+  document.getElementById("copyOpenFromBuilder").addEventListener("click", copyPromptAndOpenChatGpt);
   document.getElementById("copyFromBuilder").addEventListener("click", copyPrompt);
 }
 
@@ -554,10 +590,10 @@ function renderPrompt() {
           <h3>Prompt actions</h3>
           <span>${prompt.length.toLocaleString()} characters</span>
         </div>
-        <button class="button primary full" type="button" id="openChatGpt">Copy and Open ChatGPT</button>
-        <button class="button danger full" type="button" id="copyPrompt">Copy Prompt</button>
+        <button class="button danger full" type="button" id="copyOpenPrompt">Copy Prompt & Open ChatGPT</button>
+        <button class="button full" type="button" id="copyPrompt">Copy Prompt Only</button>
         <button class="button full" type="button" id="goBuilder">Edit in Builder</button>
-        <div class="empty">${selectedAssets().length || "No"} reference assets included. ChatGPT will open in a new tab; paste if the prompt box is empty.</div>
+        <div class="empty">${selectedAssets().length || "No"} reference assets included.</div>
       </div>
       <pre class="prompt-preview">${escapeHtml(prompt)}</pre>
     </div>
@@ -565,12 +601,13 @@ function renderPrompt() {
 }
 
 function bindPromptEvents() {
-  document.getElementById("openChatGpt").addEventListener("click", openChatGptWithPrompt);
+  document.getElementById("copyOpenPrompt").addEventListener("click", copyPromptAndOpenChatGpt);
   document.getElementById("copyPrompt").addEventListener("click", copyPrompt);
   document.getElementById("goBuilder").addEventListener("click", () => setRoute("builder"));
 }
 
 function renderSettings() {
+  const customTarget = ![DEFAULT_CHATGPT_URL, CHATGPT_APP_URL].includes(state.chatgptTarget);
   return `<section class="screen">
     <div class="screen-heading">
       <h2>Backup and install</h2>
@@ -588,12 +625,31 @@ function renderSettings() {
       </div>
       <div class="panel grid">
         <div class="panel-title">
+          <h3>ChatGPT launch</h3>
+          <span>Copy flow</span>
+        </div>
+        <div class="field">
+          <label for="chatgptTarget">Open target</label>
+          <select id="chatgptTarget">
+            <option value="${DEFAULT_CHATGPT_URL}" ${state.chatgptTarget === DEFAULT_CHATGPT_URL ? "selected" : ""}>ChatGPT web / app handoff</option>
+            <option value="${CHATGPT_APP_URL}" ${state.chatgptTarget === CHATGPT_APP_URL ? "selected" : ""}>Native app deep link (experimental)</option>
+            <option value="custom" ${customTarget ? "selected" : ""}>Custom URL</option>
+          </select>
+        </div>
+        <div class="field ${customTarget ? "" : "hidden"}" id="customTargetField">
+          <label for="customChatgptTarget">Custom URL</label>
+          <input id="customChatgptTarget" value="${escapeHtml(customTarget ? state.chatgptTarget : "")}" placeholder="https://chatgpt.com/">
+        </div>
+        <div class="note">Native app opening depends on the device and browser. The web option is the most reliable and may still hand off to the installed app.</div>
+      </div>
+      <div class="panel grid">
+        <div class="panel-title">
           <h3>Device status</h3>
           <span>PWA v1</span>
         </div>
         <div class="summary-bar">
           <div class="summary-tile"><strong>${state.assets.length}</strong><span>Assets</span></div>
-          <div class="summary-tile"><strong>${state.assets.filter((asset) => asset.imageBlob).length}</strong><span>Stored images</span></div>
+          <div class="summary-tile"><strong>${state.assets.filter(hasReferenceImage).length}</strong><span>Reference images</span></div>
           <div class="summary-tile"><strong>${navigator.onLine ? "On" : "Off"}</strong><span>Network</span></div>
         </div>
         <div class="empty">Use your browser's install option to add Meme Studio to the home screen.</div>
@@ -605,6 +661,22 @@ function renderSettings() {
 function bindSettingsEvents() {
   document.getElementById("exportLibrary").addEventListener("click", exportLibrary);
   document.getElementById("importLibrary").addEventListener("change", importLibrary);
+  document.getElementById("chatgptTarget").addEventListener("change", (event) => {
+    const customField = document.getElementById("customTargetField");
+    if (event.target.value === "custom") {
+      customField.classList.remove("hidden");
+      const customInput = document.getElementById("customChatgptTarget");
+      customInput.focus();
+      saveChatGptTarget(customInput.value.trim() || DEFAULT_CHATGPT_URL);
+      return;
+    }
+    customField.classList.add("hidden");
+    saveChatGptTarget(event.target.value);
+    showToast("ChatGPT launch target saved");
+  });
+  document.getElementById("customChatgptTarget").addEventListener("input", (event) => {
+    saveChatGptTarget(event.target.value.trim() || DEFAULT_CHATGPT_URL);
+  });
 }
 
 function selectedAssets() {
@@ -622,9 +694,16 @@ function groupSelectedAssets() {
 function describeAsset(asset) {
   const bits = [asset.name];
   if (asset.description) bits.push(asset.description);
+  if (asset.imageUrl) bits.push(`Image URL: ${asset.imageUrl}`);
   if (asset.tags?.length) bits.push(`Tags: ${asset.tags.join(", ")}`);
   if (asset.notes) bits.push(`Notes: ${asset.notes}`);
-  return bits.join(" — ");
+  return bits.join(" - ");
+}
+
+function listImageUrls(assets) {
+  const urlAssets = assets.filter((asset) => asset.imageUrl);
+  if (!urlAssets.length) return "- None";
+  return urlAssets.map((asset) => `- ${asset.name}: ${asset.imageUrl}`).join("\n");
 }
 
 function listAssets(assets) {
@@ -634,9 +713,10 @@ function listAssets(assets) {
 
 function generatePrompt() {
   const groups = groupSelectedAssets();
-  const imageAssets = selectedAssets().filter((asset) => asset.imageBlob);
-  const attachReminder = imageAssets.length
-    ? `\n\nAttach these image files manually before generating:\n${imageAssets.map((asset) => `- ${asset.name}`).join("\n")}`
+  const selected = selectedAssets();
+  const localImageAssets = selected.filter((asset) => asset.imageBlob && !asset.imageUrl);
+  const attachReminder = localImageAssets.length
+    ? `\n\nAttach these local image files manually before generating:\n${localImageAssets.map((asset) => `- ${asset.name}`).join("\n")}`
     : "";
 
   return `Use the M&S Cafe Cartoon Meme Skill.
@@ -659,6 +739,9 @@ ${listAssets(groups["style-rule"])}
 
 Previous Memes:
 ${listAssets(groups["previous-meme"])}
+
+REFERENCE IMAGE URLS:
+${listImageUrls(selected)}
 
 MEME IDEA:
 ${state.draft.jokeIdea || "[Write the joke idea here]"}
@@ -721,15 +804,18 @@ async function copyPrompt() {
   }
 }
 
-async function openChatGptWithPrompt() {
-  const chatWindow = window.open("about:blank", "_blank");
+async function copyPromptAndOpenChatGpt() {
   await copyPrompt();
-  if (chatWindow) {
-    chatWindow.opener = null;
-    chatWindow.location.href = "https://chatgpt.com/";
+  openChatGptTarget();
+}
+
+function openChatGptTarget() {
+  const target = state.chatgptTarget || DEFAULT_CHATGPT_URL;
+  const opened = window.open(target, "_blank", "noopener,noreferrer");
+  if (!opened && target !== DEFAULT_CHATGPT_URL) {
+    window.location.href = target;
   }
-  else window.location.href = "https://chatgpt.com/";
-  showToast("Prompt copied. Paste it into ChatGPT.");
+  showToast("Prompt copied. Opening ChatGPT...");
 }
 
 async function blobToDataUrl(blob) {
@@ -787,6 +873,7 @@ async function importLibrary(event) {
         name: imported.name || "Imported asset",
         category: imported.category || "prop",
         description: imported.description || "",
+        imageUrl: imported.imageUrl || "",
         tags: Array.isArray(imported.tags) ? imported.tags : [],
         notes: imported.notes || "",
         imageBlob: await dataUrlToBlob(imported.imageDataUrl),

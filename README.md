@@ -48,10 +48,32 @@ This is a static PWA, so GitHub Pages can serve it directly from the repository 
 ## Using the App
 
 1. Go to Library and add reusable assets such as characters, cafe locations, equipment, props, running gags, style rules, and previous memes.
-2. Optionally upload image references. Images are stored locally in IndexedDB.
+2. Add a public image URL for reference images, or optionally upload local image references. Local images are stored in IndexedDB.
 3. Go to Builder, select assets, add the joke idea, dialogue, caption, format, aspect ratio, and tone.
 4. Go to Prompt or use Copy Prompt from Builder.
-5. Paste the generated prompt into ChatGPT image generation and attach any referenced image files manually.
+5. Paste the generated prompt into ChatGPT image generation. Assets with public URLs are listed in the prompt; local-only images still need to be attached manually.
+
+## One-time GitHub Asset Upload
+
+For reusable character sheets and cafe references, put the image files in the repository once and use their GitHub Pages URLs in the Library.
+
+Recommended folder:
+
+```text
+assets/
+  characters/
+  locations/
+  equipment/
+  props/
+```
+
+After GitHub Pages deploys, URLs usually follow this pattern:
+
+```text
+https://sourmilkman.github.io/CafeMemeGen/assets/characters/alex.png
+```
+
+Paste that URL into the asset's Public image URL field. When the asset is selected in Builder, the app shows a larger preview and includes the URL in the generated prompt.
 
 ## Export and Import
 
