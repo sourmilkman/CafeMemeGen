@@ -1,4 +1,4 @@
-const CACHE_NAME = "ms-meme-studio-v4";
+const CACHE_NAME = "cafememe-v5";
 const APP_SHELL = [
   "./",
   "./index.html",

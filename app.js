@@ -1,101 +1,30 @@
 const DB_NAME = "ms-meme-studio";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const ASSET_STORE = "assets";
 const DRAFT_STORE = "drafts";
 const DRAFT_ID = "current-draft";
-const BUILD_INFO = window.__BUILD_INFO__ || { commit: "local", builtAt: "local" };
+const BUILD_INFO = window.__BUILD_INFO__ || { commit: "local" };
 
 const categories = [
-  ["all", "All"],
-  ["character", "Characters"],
-  ["location", "Locations"],
-  ["equipment", "Equipment"],
+  ["colleague", "Colleagues"],
+  ["set", "Sets"],
   ["prop", "Props"],
-  ["running-gag", "Running Gags"],
-  ["style-rule", "Style Rules"],
-  ["previous-meme", "Previous Memes"]
+  ["equipment", "Equipment"]
 ];
-
-const builderCategories = [
-  "character",
-  "location",
-  "equipment",
-  "prop",
-  "running-gag",
-  "style-rule",
-  "previous-meme"
+const colleagueNames = [
+  "Alex", "Anna", "Bea", "Bobbie", "Bryony", "Clarke", "Conrad", "Cormac", "Derega",
+  "Emma", "Florence", "Hattie", "Henry", "Jane", "Jassy", "Jo", "Jono", "Kate",
+  "Kristian", "Lillie", "Lisa", "Liz", "Manni", "Nicola", "Rachel", "Ricky", "Rosanna",
+  "Sam", "Twiggy", "Vicky", "Zoie", "Josh", "Lee", "Wendy"
 ];
-
-const formats = [
-  "single-panel cartoon",
-  "multi-panel comic",
-  "fake advert",
-  "poster",
-  "Top Trumps card",
-  "birthday card",
-  "freeform"
-];
-
+const formats = ["single-panel cartoon", "multi-panel comic", "fake advert", "poster", "Top Trumps card", "birthday card", "freeform"];
 const aspectRatios = ["square", "portrait", "landscape", "mobile story"];
 const tones = ["workplace-friendly", "chaotic", "deadpan", "absurd", "sentimental", "birthday/farewell"];
-
-const seedAssets = [
-  {
-    name: "Cafe Team Character Sheet",
-    category: "character",
-    description: "Reusable cartoon staff reference with uniform notes and friendly expressions.",
-    tags: ["team", "uniform", "reference"],
-    notes: "Replace with individual character sheets when ready."
-  },
-  {
-    name: "Coffee Bar Reference",
-    category: "location",
-    description: "Main cafe counter, pastry case, pickup area, and queue line.",
-    tags: ["counter", "layout"],
-    notes: "Useful when the joke depends on believable cafe geography."
-  },
-  {
-    name: "WMF Coffee Machine",
-    category: "equipment",
-    description: "Large espresso machine with milk wand, cups stacked nearby, and cleaning cloth.",
-    tags: ["coffee", "machine"],
-    notes: "Keep scale accurate beside characters."
-  },
-  {
-    name: "The Last Toastie",
-    category: "running-gag",
-    description: "A dramatic workplace saga about one remaining toastie at lunch rush.",
-    tags: ["food", "chaos"],
-    notes: "Works well in deadpan or fake advert formats."
-  }
-];
-
-const state = {
-  route: "library",
-  assets: [],
-  draft: createEmptyDraft(),
-  activeCategory: "all",
-  editingAssetId: null
-};
-
+const state = { route: "builder", assets: [], draft: createEmptyDraft() };
 let dbPromise;
 
 function createEmptyDraft() {
-  const now = new Date().toISOString();
-  return {
-    id: DRAFT_ID,
-    title: "Untitled meme",
-    selectedAssetIds: [],
-    jokeIdea: "",
-    dialogue: "",
-    caption: "",
-    format: formats[0],
-    aspectRatio: aspectRatios[0],
-    tone: tones[0],
-    generatedPrompt: "",
-    createdAt: now,
-    updatedAt: now
-  };
+  return { id: DRAFT_ID, selectedAssetIds: [], jokeIdea: "", dialogue: "", caption: "", format: formats[0], aspectRatio: aspectRatios[0], tone: tones[0], extraInstructions: "", generatedPrompt: "", updatedAt: new Date().toISOString() };
 }
 
 function openDb() {
@@ -107,28 +36,13 @@ function openDb() {
       if (!db.objectStoreNames.contains(ASSET_STORE)) {
         const store = db.createObjectStore(ASSET_STORE, { keyPath: "id" });
         store.createIndex("category", "category", { unique: false });
-        store.createIndex("updatedAt", "updatedAt", { unique: false });
       }
-      if (!db.objectStoreNames.contains(DRAFT_STORE)) {
-        db.createObjectStore(DRAFT_STORE, { keyPath: "id" });
-      }
+      if (!db.objectStoreNames.contains(DRAFT_STORE)) db.createObjectStore(DRAFT_STORE, { keyPath: "id" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
   return dbPromise;
-}
-
-async function tx(storeName, mode, action) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(storeName, mode);
-    const store = transaction.objectStore(storeName);
-    const result = action(store);
-    transaction.oncomplete = () => resolve(result);
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
-  });
 }
 
 function requestToPromise(request) {
@@ -138,671 +52,243 @@ function requestToPromise(request) {
   });
 }
 
-async function getAllAssets() {
+async function getAll(storeName) {
   const db = await openDb();
-  return requestToPromise(db.transaction(ASSET_STORE).objectStore(ASSET_STORE).getAll());
+  return requestToPromise(db.transaction(storeName).objectStore(storeName).getAll());
 }
 
-async function saveAsset(asset) {
-  return tx(ASSET_STORE, "readwrite", (store) => store.put(asset));
+async function put(storeName, value) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readwrite");
+    tx.objectStore(storeName).put(value);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
 }
 
-async function deleteAsset(id) {
-  return tx(ASSET_STORE, "readwrite", (store) => store.delete(id));
+async function removeAsset(id) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(ASSET_STORE, "readwrite");
+    tx.objectStore(ASSET_STORE).delete(id);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+function makeId() {
+  return crypto.randomUUID?.() || `asset-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+async function ensureLibrary() {
+  const map = { character: "colleague", location: "set" };
+  for (const asset of await getAll(ASSET_STORE)) {
+    if (map[asset.category]) await put(ASSET_STORE, { id: asset.id, name: asset.name, category: map[asset.category] });
+  }
+  const existing = await getAll(ASSET_STORE);
+  const known = new Set(existing.filter((asset) => asset.category === "colleague").map((asset) => asset.name.toLowerCase()));
+  for (const name of colleagueNames) {
+    if (!known.has(name.toLowerCase())) await put(ASSET_STORE, { id: makeId(), name, category: "colleague" });
+  }
+  state.assets = (await getAll(ASSET_STORE)).filter((asset) => categories.some(([value]) => value === asset.category));
+}
+
+async function loadDraft() {
+  const saved = (await getAll(DRAFT_STORE)).find((draft) => draft.id === DRAFT_ID);
+  state.draft = { ...createEmptyDraft(), ...(saved || {}) };
 }
 
 async function saveDraft() {
   state.draft.generatedPrompt = generatePrompt();
   state.draft.updatedAt = new Date().toISOString();
-  return tx(DRAFT_STORE, "readwrite", (store) => store.put(state.draft));
+  await put(DRAFT_STORE, state.draft);
 }
 
-async function loadDraft() {
-  const db = await openDb();
-  const draft = await requestToPromise(db.transaction(DRAFT_STORE).objectStore(DRAFT_STORE).get(DRAFT_ID));
-  state.draft = draft || createEmptyDraft();
-}
-
-function makeId() {
-  if (crypto.randomUUID) return crypto.randomUUID();
-  return `asset-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-async function init() {
-  await openDb();
-  state.assets = await getAllAssets();
-  if (state.assets.length === 0) {
-    const now = new Date().toISOString();
-    await Promise.all(
-      seedAssets.map((asset) =>
-        saveAsset({ ...asset, id: makeId(), imageBlob: null, createdAt: now, updatedAt: now })
-      )
-    );
-    state.assets = await getAllAssets();
-  }
-  await loadDraft();
-  state.draft.generatedPrompt = generatePrompt();
-  bindGlobalEvents();
-  render();
-  registerServiceWorker();
-  updateStorageStatus();
-  await updateBuildStatus();
-}
-
-function bindGlobalEvents() {
-  document.querySelectorAll(".nav-item").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.route = button.dataset.route;
-      render();
-      document.getElementById("app").focus();
-    });
-  });
-
-  window.addEventListener("online", updateStorageStatus);
-  window.addEventListener("offline", updateStorageStatus);
-}
-
-function updateStorageStatus() {
-  const status = document.getElementById("storageStatus");
-  status.textContent = navigator.onLine ? "Saved on this device" : "Offline and saved locally";
-}
-
-async function updateBuildStatus() {
-  const status = document.getElementById("buildStatus");
-  const commit = BUILD_INFO.commit || "local";
-  status.textContent = `Build ${commit}`;
-  if (!navigator.onLine) return;
-
-  try {
-    const response = await fetch("https://api.github.com/repos/sourmilkman/CafeMemeGen/commits/main");
-    if (!response.ok) return;
-    const data = await response.json();
-    if (data.sha) status.textContent = `Build ${data.sha.slice(0, 7)}`;
-  } catch {
-    // The static build info remains visible if GitHub's API is unavailable.
-  }
-}
-
-function setRoute(route) {
-  state.route = route;
-  render();
-}
-
-function render() {
-  document.querySelectorAll(".nav-item").forEach((button) => {
-    button.classList.toggle("active", button.dataset.route === state.route);
-  });
-
-  const app = document.getElementById("app");
-  const screens = {
-    library: renderLibrary,
-    builder: renderBuilder,
-    prompt: renderPrompt,
-    settings: renderSettings
-  };
-  app.innerHTML = screens[state.route]();
-  bindScreenEvents();
-}
-
-function bindScreenEvents() {
-  if (state.route === "library") bindLibraryEvents();
-  if (state.route === "builder") bindBuilderEvents();
-  if (state.route === "prompt") bindPromptEvents();
-  if (state.route === "settings") bindSettingsEvents();
+function escapeHtml(value = "") {
+  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 
 function categoryLabel(category) {
   return categories.find(([value]) => value === category)?.[1] || category;
 }
 
-function escapeHtml(value = "") {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+function assetsFor(category) {
+  return state.assets.filter((asset) => asset.category === category).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function assetThumb(asset) {
-  if (asset.imageBlob) {
-    const url = URL.createObjectURL(asset.imageBlob);
-    return `<img src="${url}" alt="">`;
-  }
-  return escapeHtml(asset.name.slice(0, 1).toUpperCase());
+function selectedAssets() {
+  const ids = new Set(state.draft.selectedAssetIds);
+  return state.assets.filter((asset) => ids.has(asset.id));
 }
 
-function tagsHtml(tags = []) {
-  if (!tags.length) return "";
-  return `<div class="tag-row">${tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div>`;
+function renderSelector(category) {
+  const assets = assetsFor(category);
+  return `<fieldset class="choice-group"><legend>${categoryLabel(category)}</legend><div class="choice-grid">
+    ${assets.length ? assets.map((asset) => `<label class="choice-pill"><input type="checkbox" value="${asset.id}" data-select-asset ${state.draft.selectedAssetIds.includes(asset.id) ? "checked" : ""}><span>${escapeHtml(asset.name)}</span></label>`).join("") : `<p class="empty-inline">Add names in Library when needed.</p>`}
+  </div></fieldset>`;
 }
 
-function renderCategoryStrip() {
-  return `<div class="category-strip" role="list" aria-label="Asset categories">
-    ${categories
-      .map(
-        ([value, label]) =>
-          `<button class="chip ${state.activeCategory === value ? "active" : ""}" type="button" data-category="${value}">${label}</button>`
-      )
-      .join("")}
-  </div>`;
-}
-
-function renderAssetList(assets) {
-  if (!assets.length) {
-    return `<div class="empty">No assets here yet. Add one above or import a library backup.</div>`;
-  }
-
-  return `<div class="asset-list">
-    ${assets
-      .map(
-        (asset) => `<article class="asset-card">
-          <div class="asset-thumb">${assetThumb(asset)}</div>
-          <div>
-            <h4>${escapeHtml(asset.name)}</h4>
-            <p>${escapeHtml(categoryLabel(asset.category))} · ${escapeHtml(asset.description || "No description")}</p>
-            ${tagsHtml(asset.tags)}
-          </div>
-          <button class="icon-button" type="button" data-edit-asset="${asset.id}" aria-label="Edit ${escapeHtml(asset.name)}">✎</button>
-        </article>`
-      )
-      .join("")}
-  </div>`;
-}
-
-function renderLibrary() {
-  const filtered =
-    state.activeCategory === "all"
-      ? state.assets
-      : state.assets.filter((asset) => asset.category === state.activeCategory);
-  const editing = state.assets.find((asset) => asset.id === state.editingAssetId);
-
-  return `<section class="screen">
-    <div class="screen-heading">
-      <h2>Reusable meme assets</h2>
-      <p>Create characters, cafe references, equipment, props, style rules, and running gags. Images stay inside this browser.</p>
-    </div>
-    <div class="summary-bar">
-      <div class="summary-tile"><strong>${state.assets.length}</strong><span>Assets</span></div>
-      <div class="summary-tile"><strong>${state.assets.filter((asset) => asset.imageBlob).length}</strong><span>Images</span></div>
-      <div class="summary-tile"><strong>${state.draft.selectedAssetIds.length}</strong><span>Selected</span></div>
-    </div>
-    <div class="two-column">
-      <form id="assetForm" class="panel grid">
-        <div class="panel-title">
-          <h3>${editing ? "Edit asset" : "Add asset"}</h3>
-          ${editing ? `<button class="button" type="button" id="cancelEdit">Cancel</button>` : ""}
-        </div>
-        <input type="hidden" name="id" value="${escapeHtml(editing?.id || "")}">
-        <div class="field">
-          <label for="assetName">Name</label>
-          <input id="assetName" name="name" required value="${escapeHtml(editing?.name || "")}" placeholder="Alex Character Sheet">
-        </div>
-        <div class="field">
-          <label for="assetCategory">Category</label>
-          <select id="assetCategory" name="category">
-            ${categories
-              .filter(([value]) => value !== "all")
-              .map(
-                ([value, label]) =>
-                  `<option value="${value}" ${editing?.category === value ? "selected" : ""}>${label}</option>`
-              )
-              .join("")}
-          </select>
-        </div>
-        <div class="field">
-          <label for="assetDescription">Short description</label>
-          <textarea id="assetDescription" name="description" placeholder="What should the AI preserve?">${escapeHtml(editing?.description || "")}</textarea>
-        </div>
-        <div class="field">
-          <label for="assetTags">Tags</label>
-          <input id="assetTags" name="tags" value="${escapeHtml((editing?.tags || []).join(", "))}" placeholder="uniform, espresso, queue">
-        </div>
-        <div class="field">
-          <label for="assetImage">Image upload</label>
-          <input id="assetImage" name="image" type="file" accept="image/*">
-        </div>
-        <div class="field">
-          <label for="assetNotes">Notes</label>
-          <textarea id="assetNotes" name="notes" placeholder="Extra prompt guidance">${escapeHtml(editing?.notes || "")}</textarea>
-        </div>
-        <div class="actions">
-          <button class="button primary" type="submit">${editing ? "Save changes" : "Add asset"}</button>
-          ${editing ? `<button class="button danger" type="button" id="deleteAsset">Delete</button>` : ""}
-        </div>
-      </form>
-      <div class="grid">
-        ${renderCategoryStrip()}
-        ${renderAssetList(filtered)}
-      </div>
-    </div>
-  </section>`;
-}
-
-function bindLibraryEvents() {
-  document.querySelectorAll("[data-category]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.activeCategory = button.dataset.category;
-      render();
-    });
-  });
-
-  document.querySelectorAll("[data-edit-asset]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.editingAssetId = button.dataset.editAsset;
-      render();
-    });
-  });
-
-  document.getElementById("cancelEdit")?.addEventListener("click", () => {
-    state.editingAssetId = null;
-    render();
-  });
-
-  document.getElementById("deleteAsset")?.addEventListener("click", async () => {
-    if (!state.editingAssetId) return;
-    await deleteAsset(state.editingAssetId);
-    state.draft.selectedAssetIds = state.draft.selectedAssetIds.filter((id) => id !== state.editingAssetId);
-    await saveDraft();
-    state.editingAssetId = null;
-    await refreshAssets();
-    showToast("Asset deleted");
-  });
-
-  document.getElementById("assetForm").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const existing = state.assets.find((asset) => asset.id === form.get("id"));
-    const file = form.get("image");
-    const now = new Date().toISOString();
-    const asset = {
-      id: existing?.id || makeId(),
-      name: form.get("name").trim(),
-      category: form.get("category"),
-      description: form.get("description").trim(),
-      tags: form
-        .get("tags")
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean),
-      notes: form.get("notes").trim(),
-      imageBlob: file && file.size ? file : existing?.imageBlob || null,
-      createdAt: existing?.createdAt || now,
-      updatedAt: now
-    };
-    await saveAsset(asset);
-    state.editingAssetId = null;
-    await refreshAssets();
-    showToast(existing ? "Asset updated" : "Asset added");
-  });
-}
-
-async function refreshAssets() {
-  state.assets = await getAllAssets();
-  state.draft.generatedPrompt = generatePrompt();
-  render();
+function renderSelect(name, label, options, value) {
+  return `<div class="field"><label for="${name}">${label}</label><select id="${name}" name="${name}">${options.map((option) => `<option value="${option}" ${value === option ? "selected" : ""}>${option}</option>`).join("")}</select></div>`;
 }
 
 function renderBuilder() {
   return `<section class="screen">
-    <div class="screen-heading">
-      <h2>Build the joke</h2>
-      <p>Pick references, set the format, then write the idea exactly as you want it to land.</p>
-    </div>
-    <div class="two-column">
-      <div class="grid">
-        <form id="draftForm" class="panel grid">
-          <div class="panel-title">
-            <h3>Meme details</h3>
-            <span>Autosaves</span>
-          </div>
-          <div class="field">
-            <label for="jokeIdea">Joke idea</label>
-            <textarea id="jokeIdea" name="jokeIdea" placeholder="A calm shift briefing slowly becomes a debate about the last toastie.">${escapeHtml(state.draft.jokeIdea)}</textarea>
-          </div>
-          <div class="field">
-            <label for="dialogue">Dialogue</label>
-            <textarea id="dialogue" name="dialogue" placeholder="Alex: Nobody touch it.&#10;Sam: I only looked at it.">${escapeHtml(state.draft.dialogue)}</textarea>
-          </div>
-          <div class="field">
-            <label for="caption">Caption</label>
-            <textarea id="caption" name="caption" placeholder="When lunch rush becomes a hostage negotiation">${escapeHtml(state.draft.caption)}</textarea>
-          </div>
-          <div class="three-grid">
-            ${renderSelect("format", "Format", formats, state.draft.format)}
-            ${renderSelect("aspectRatio", "Aspect ratio", aspectRatios, state.draft.aspectRatio)}
-            ${renderSelect("tone", "Tone", tones, state.draft.tone)}
-          </div>
-        </form>
-        <button class="button danger full" type="button" id="copyFromBuilder">Copy Prompt</button>
+    <div class="hero"><span class="eyebrow">QUICK BUILDER</span><h2>Build the joke. Pick the cast. Go.</h2><p>Tick only what appears in the meme, add the idea, then copy straight to CafeMeme.</p></div>
+    <form id="draftForm" class="builder-layout">
+      <div class="panel asset-picker"><div class="panel-title"><h3>Included assets</h3><span>${state.draft.selectedAssetIds.length} selected</span></div>${categories.map(([category]) => renderSelector(category)).join("")}</div>
+      <div class="panel grid sticky-composer">
+        <div class="field"><label for="jokeIdea">Meme idea</label><textarea id="jokeIdea" name="jokeIdea" required placeholder="What happens, and what makes it funny?">${escapeHtml(state.draft.jokeIdea)}</textarea></div>
+        <div class="field"><label for="dialogue">Dialogue <span>optional</span></label><textarea id="dialogue" name="dialogue" placeholder="Alex: ...">${escapeHtml(state.draft.dialogue)}</textarea></div>
+        <div class="field"><label for="caption">Caption <span>optional</span></label><textarea id="caption" name="caption" placeholder="Short, instantly readable caption">${escapeHtml(state.draft.caption)}</textarea></div>
+        <div class="compact-grid">${renderSelect("format", "Format", formats, state.draft.format)}${renderSelect("aspectRatio", "Ratio", aspectRatios, state.draft.aspectRatio)}${renderSelect("tone", "Tone", tones, state.draft.tone)}</div>
+        <div class="field"><label for="extraInstructions">Anything else? <span>optional</span></label><textarea id="extraInstructions" name="extraInstructions" placeholder="Pose, expression, layout, background detail…">${escapeHtml(state.draft.extraInstructions)}</textarea></div>
+        <button class="button primary full" type="button" id="copyFromBuilder">Copy prompt</button>
+        <button class="button full" type="button" id="openFromBuilder">Copy & open ChatGPT</button>
       </div>
-      <div class="panel">
-        <div class="panel-title">
-          <h3>Reference assets</h3>
-          <span>${state.draft.selectedAssetIds.length} selected</span>
-        </div>
-        <div class="selection-group">
-          ${builderCategories.map(renderAssetSelector).join("")}
-        </div>
-      </div>
-    </div>
+    </form>
   </section>`;
 }
 
-function renderSelect(name, label, options, value) {
-  return `<div class="field">
-    <label for="${name}">${label}</label>
-    <select id="${name}" name="${name}">
-      ${options.map((option) => `<option value="${option}" ${value === option ? "selected" : ""}>${option}</option>`).join("")}
-    </select>
-  </div>`;
-}
-
-function renderAssetSelector(category) {
-  const assets = state.assets.filter((asset) => asset.category === category);
-  if (!assets.length) {
-    return `<div class="asset-selector">
-      <div class="panel-title"><h3>${categoryLabel(category)}</h3></div>
-      <div class="empty">No ${categoryLabel(category).toLowerCase()} yet.</div>
-    </div>`;
-  }
-
-  return `<div class="asset-selector">
-    <div class="panel-title"><h3>${categoryLabel(category)}</h3></div>
-    ${assets
-      .map(
-        (asset) => `<label class="selector-row">
-          <input type="checkbox" value="${asset.id}" data-select-asset ${state.draft.selectedAssetIds.includes(asset.id) ? "checked" : ""}>
-          <span><strong>${escapeHtml(asset.name)}</strong><span>${escapeHtml(asset.description || categoryLabel(asset.category))}</span></span>
-        </label>`
-      )
-      .join("")}
-  </div>`;
-}
-
-function bindBuilderEvents() {
-  document.getElementById("draftForm").addEventListener("input", async (event) => {
-    const target = event.target;
-    if (!target.name) return;
-    state.draft[target.name] = target.value;
-    await saveDraft();
-  });
-
-  document.querySelectorAll("[data-select-asset]").forEach((input) => {
-    input.addEventListener("change", async () => {
-      const selected = new Set(state.draft.selectedAssetIds);
-      if (input.checked) selected.add(input.value);
-      else selected.delete(input.value);
-      state.draft.selectedAssetIds = [...selected];
-      await saveDraft();
-      render();
-    });
-  });
-
-  document.getElementById("copyFromBuilder").addEventListener("click", copyPrompt);
+function renderLibrary() {
+  return `<section class="screen">
+    <div class="hero"><span class="eyebrow">LIBRARY</span><h2>Names, neatly organised.</h2><p>No uploads or long descriptions. Add sets, props and equipment only when you need them.</p></div>
+    <form id="assetForm" class="panel add-row"><div class="field"><label for="assetName">Asset name</label><input id="assetName" name="name" required placeholder="e.g. Cake counter"></div><div class="field"><label for="assetCategory">Type</label><select id="assetCategory" name="category">${categories.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></div><button class="button primary" type="submit">Add</button></form>
+    <div class="library-grid">${categories.map(([category, label]) => `<section class="panel name-list"><div class="panel-title"><h3>${label}</h3><span>${assetsFor(category).length}</span></div>${assetsFor(category).length ? assetsFor(category).map((asset) => `<div class="name-row"><span>${escapeHtml(asset.name)}</span><button type="button" data-delete-asset="${asset.id}" aria-label="Delete ${escapeHtml(asset.name)}">×</button></div>`).join("") : `<p class="empty-inline">Nothing added yet.</p>`}</section>`).join("")}</div>
+  </section>`;
 }
 
 function renderPrompt() {
   const prompt = generatePrompt();
-  return `<section class="screen">
-    <div class="screen-heading">
-      <h2>Copy-ready prompt</h2>
-      <p>This is the complete prompt to paste into ChatGPT image generation. Attach any referenced image files manually.</p>
-    </div>
-    <div class="two-column">
-      <div class="panel grid">
-        <div class="panel-title">
-          <h3>Prompt actions</h3>
-          <span>${prompt.length.toLocaleString()} characters</span>
-        </div>
-        <button class="button primary full" type="button" id="openChatGpt">Copy and Open ChatGPT</button>
-        <button class="button danger full" type="button" id="copyPrompt">Copy Prompt</button>
-        <button class="button full" type="button" id="goBuilder">Edit in Builder</button>
-        <div class="empty">${selectedAssets().length || "No"} reference assets included. ChatGPT will open in a new tab; paste if the prompt box is empty.</div>
-      </div>
-      <pre class="prompt-preview">${escapeHtml(prompt)}</pre>
-    </div>
-  </section>`;
-}
-
-function bindPromptEvents() {
-  document.getElementById("openChatGpt").addEventListener("click", openChatGptWithPrompt);
-  document.getElementById("copyPrompt").addEventListener("click", copyPrompt);
-  document.getElementById("goBuilder").addEventListener("click", () => setRoute("builder"));
+  return `<section class="screen"><div class="hero"><span class="eyebrow">READY</span><h2>Your CafeMeme prompt.</h2><p>Attach current colleague reference images in ChatGPT before generating whenever likeness matters.</p></div><div class="prompt-layout"><div class="panel grid"><button class="button primary full" id="openChatGpt" type="button">Copy & open ChatGPT</button><button class="button full" id="copyPrompt" type="button">Copy prompt</button><button class="button ghost full" id="goBuilder" type="button">Back to builder</button><p class="empty-inline">${prompt.length.toLocaleString()} characters · ${selectedAssets().length} assets</p></div><pre class="prompt-preview">${escapeHtml(prompt)}</pre></div></section>`;
 }
 
 function renderSettings() {
-  return `<section class="screen">
-    <div class="screen-heading">
-      <h2>Backup and install</h2>
-      <p>Export the local asset library as JSON, import it on another device, and install the app from your browser menu.</p>
-    </div>
-    <div class="two-column">
-      <div class="panel grid">
-        <div class="panel-title">
-          <h3>Library backup</h3>
-          <span>${state.assets.length} assets</span>
-        </div>
-        <button class="button primary full" type="button" id="exportLibrary">Export Library as JSON</button>
-        <label class="button full" for="importLibrary">Import Library from JSON</label>
-        <input class="import-input" id="importLibrary" type="file" accept="application/json,.json">
-      </div>
-      <div class="panel grid">
-        <div class="panel-title">
-          <h3>Device status</h3>
-          <span>PWA v1</span>
-        </div>
-        <div class="summary-bar">
-          <div class="summary-tile"><strong>${state.assets.length}</strong><span>Assets</span></div>
-          <div class="summary-tile"><strong>${state.assets.filter((asset) => asset.imageBlob).length}</strong><span>Stored images</span></div>
-          <div class="summary-tile"><strong>${navigator.onLine ? "On" : "Off"}</strong><span>Network</span></div>
-        </div>
-        <div class="empty">Use your browser's install option to add Meme Studio to the home screen.</div>
-      </div>
-    </div>
-  </section>`;
+  return `<section class="screen"><div class="hero"><span class="eyebrow">SETTINGS</span><h2>Local, private, installable.</h2><p>Your asset names and current draft stay on this device.</p></div><div class="panel grid settings-card"><button class="button primary full" id="exportLibrary" type="button">Export library JSON</button><label class="button full" for="importLibrary">Import library JSON</label><input hidden id="importLibrary" type="file" accept="application/json,.json"><p class="empty-inline">Use your browser menu to install the app. Build v5 · ${escapeHtml(BUILD_INFO.commit || "local")}</p></div></section>`;
 }
 
-function bindSettingsEvents() {
-  document.getElementById("exportLibrary").addEventListener("click", exportLibrary);
-  document.getElementById("importLibrary").addEventListener("change", importLibrary);
+function render() {
+  document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.route === state.route));
+  document.getElementById("app").innerHTML = ({ builder: renderBuilder, library: renderLibrary, prompt: renderPrompt, settings: renderSettings })[state.route]();
+  bindScreenEvents();
 }
 
-function selectedAssets() {
-  const selected = new Set(state.draft.selectedAssetIds);
-  return state.assets.filter((asset) => selected.has(asset.id));
+function bindScreenEvents() {
+  if (state.route === "builder") {
+    document.getElementById("draftForm").addEventListener("input", async (event) => {
+      if (!event.target.name) return;
+      state.draft[event.target.name] = event.target.value;
+      await saveDraft();
+    });
+    document.querySelectorAll("[data-select-asset]").forEach((input) => input.addEventListener("change", async () => {
+      const selected = new Set(state.draft.selectedAssetIds);
+      input.checked ? selected.add(input.value) : selected.delete(input.value);
+      state.draft.selectedAssetIds = [...selected];
+      await saveDraft();
+      render();
+    }));
+    document.getElementById("copyFromBuilder").addEventListener("click", copyPrompt);
+    document.getElementById("openFromBuilder").addEventListener("click", openChatGptWithPrompt);
+  }
+  if (state.route === "library") {
+    document.getElementById("assetForm").addEventListener("submit", addAsset);
+    document.querySelectorAll("[data-delete-asset]").forEach((button) => button.addEventListener("click", async () => {
+      const id = button.dataset.deleteAsset;
+      await removeAsset(id);
+      state.draft.selectedAssetIds = state.draft.selectedAssetIds.filter((value) => value !== id);
+      await saveDraft();
+      await refreshAssets();
+    }));
+  }
+  if (state.route === "prompt") {
+    document.getElementById("openChatGpt").addEventListener("click", openChatGptWithPrompt);
+    document.getElementById("copyPrompt").addEventListener("click", copyPrompt);
+    document.getElementById("goBuilder").addEventListener("click", () => setRoute("builder"));
+  }
+  if (state.route === "settings") {
+    document.getElementById("exportLibrary").addEventListener("click", exportLibrary);
+    document.getElementById("importLibrary").addEventListener("change", importLibrary);
+  }
 }
 
-function groupSelectedAssets() {
-  return builderCategories.reduce((groups, category) => {
-    groups[category] = selectedAssets().filter((asset) => asset.category === category);
-    return groups;
-  }, {});
+async function refreshAssets() {
+  state.assets = (await getAll(ASSET_STORE)).filter((asset) => categories.some(([value]) => value === asset.category));
+  render();
 }
 
-function describeAsset(asset) {
-  const bits = [asset.name];
-  if (asset.description) bits.push(asset.description);
-  if (asset.tags?.length) bits.push(`Tags: ${asset.tags.join(", ")}`);
-  if (asset.notes) bits.push(`Notes: ${asset.notes}`);
-  return bits.join(" — ");
+async function addAsset(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const name = form.get("name").trim();
+  const category = form.get("category");
+  if (state.assets.some((asset) => asset.category === category && asset.name.toLowerCase() === name.toLowerCase())) return showToast("That name is already listed");
+  await put(ASSET_STORE, { id: makeId(), name, category });
+  await refreshAssets();
+  showToast("Asset added");
 }
 
-function listAssets(assets) {
-  if (!assets.length) return "- None selected";
-  return assets.map((asset) => `- ${describeAsset(asset)}`).join("\n");
+function listNames(category) {
+  const names = selectedAssets().filter((asset) => asset.category === category).map((asset) => asset.name);
+  return names.length ? names.join(", ") : "None";
 }
 
 function generatePrompt() {
-  const groups = groupSelectedAssets();
-  const imageAssets = selectedAssets().filter((asset) => asset.imageBlob);
-  const attachReminder = imageAssets.length
-    ? `\n\nAttach these image files manually before generating:\n${imageAssets.map((asset) => `- ${asset.name}`).join("\n")}`
-    : "";
-
-  return `Use the M&S Cafe Cartoon Meme Skill.
-
-REFERENCE ASSETS TO USE:
-Characters:
-${listAssets(groups.character)}
-
-Locations:
-${listAssets(groups.location)}
-
-Equipment / Props:
-${listAssets([...groups.equipment, ...groups.prop])}
-
-Running Gags:
-${listAssets(groups["running-gag"])}
-
-Style Rules:
-${listAssets(groups["style-rule"])}
-
-Previous Memes:
-${listAssets(groups["previous-meme"])}
-
-MEME IDEA:
-${state.draft.jokeIdea || "[Write the joke idea here]"}
-
-DIALOGUE:
-${state.draft.dialogue || "[Write dialogue here]"}
-
-CAPTION:
-${state.draft.caption || "[Write caption here]"}
-
-FORMAT:
-${state.draft.format}
-
-ASPECT RATIO:
-${state.draft.aspectRatio}
-
-TONE:
-${state.draft.tone}
-
-STYLE:
-Create a polished cartoon meme with expressive characters, clear storytelling, readable text, accurate cafe details, and good-natured workplace humour.
-
-RULES:
-- Preserve recognisable likeness from the uploaded character sheets.
-- Preserve uniforms, proportions, hairstyles, and body language.
-- Use the selected environment and equipment references accurately.
-- Humour should come from the situation, not cruelty or mockery.
-- Keep speech bubbles readable.
-- Keep composition clear.
-- Choose the best layout for the joke; do not force single-panel if multi-panel works better.
-- Avoid offensive stereotypes, politics, religion, or personal attacks.
-- Ensure the joke reads within three seconds.
-
-QUALITY CHECK:
-Before generating, verify:
-- the selected people are recognisable
-- the joke is clear
-- the image is not overcrowded
-- text is readable
-- objects are at correct scale
-- cafe layout is believable${attachReminder}`;
+  return `Create an M&S Cafe Cartoon meme using the CafeMeme rules.\n\nINCLUDED ASSETS\nColleagues: ${listNames("colleague")}\nSets: ${listNames("set")}\nProps: ${listNames("prop")}\nEquipment: ${listNames("equipment")}\n\nMEME IDEA\n${state.draft.jokeIdea || "[Add the joke idea]"}\n\nDIALOGUE\n${state.draft.dialogue || "Use no dialogue unless it improves the joke."}\n\nCAPTION\n${state.draft.caption || "Create a short caption only if useful."}\n\nFORMAT: ${state.draft.format}\nASPECT RATIO: ${state.draft.aspectRatio}\nTONE: ${state.draft.tone}\nEXTRA DIRECTION: ${state.draft.extraInstructions || "None"}\n\nREFERENCE IMAGE RULES\n- Use only the colleague reference images attached to this ChatGPT message.\n- Match each named colleague to the correct attached image; ask if the mapping is ambiguous.\n- Preserve recognisable facial likeness, hairstyle, age, body shape and distinguishing features.\n- Treat the attached images as the source of truth for uniform details, colours, logos and fit. Do not invent or substitute uniform elements.\n- If a selected colleague has no usable reference image, ask for one before generating when likeness is important.\n\nOUTPUT RULES\n- Produce a polished, expressive cartoon with clear visual storytelling and good-natured workplace humour.\n- Keep all text large, correctly spelled and readable on a phone.\n- Keep the cafe layout, equipment and object scale believable.\n- Avoid cruelty, personal attacks, offensive stereotypes, politics and religion.\n- Make the joke understandable within three seconds.\n- Before generating, silently check cast accuracy, likeness, uniform correctness, spelling, composition and readability.`;
 }
 
 async function copyPrompt() {
   const prompt = generatePrompt();
-  state.draft.generatedPrompt = prompt;
   await saveDraft();
-
-  try {
-    await navigator.clipboard.writeText(prompt);
-    showToast("Prompt copied");
-  } catch {
+  try { await navigator.clipboard.writeText(prompt); }
+  catch {
     const textarea = document.createElement("textarea");
     textarea.value = prompt;
     document.body.append(textarea);
     textarea.select();
     document.execCommand("copy");
     textarea.remove();
-    showToast("Prompt copied");
   }
+  showToast("Prompt copied");
 }
 
 async function openChatGptWithPrompt() {
   const chatWindow = window.open("about:blank", "_blank");
   await copyPrompt();
-  if (chatWindow) {
-    chatWindow.opener = null;
-    chatWindow.location.href = "https://chatgpt.com/";
-  }
-  else window.location.href = "https://chatgpt.com/";
-  showToast("Prompt copied. Paste it into ChatGPT.");
-}
-
-async function blobToDataUrl(blob) {
-  if (!blob) return null;
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function dataUrlToBlob(dataUrl) {
-  if (!dataUrl) return null;
-  const response = await fetch(dataUrl);
-  return response.blob();
+  const url = "https://chatgpt.com/gpts";
+  if (chatWindow) { chatWindow.opener = null; chatWindow.location.href = url; }
+  else window.location.href = url;
+  showToast("Prompt copied — open CafeMeme and paste");
 }
 
 async function exportLibrary() {
-  const payload = {
-    app: "M&S Meme Studio",
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    assets: await Promise.all(
-      state.assets.map(async (asset) => ({
-        ...asset,
-        imageDataUrl: await blobToDataUrl(asset.imageBlob),
-        imageBlob: undefined
-      }))
-    )
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
+  const payload = { app: "CafeMeme", version: 2, assets: state.assets.map(({ id, name, category }) => ({ id, name, category })) };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = `ms-meme-studio-library-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = `cafememe-library-${new Date().toISOString().slice(0, 10)}.json`;
   link.click();
   URL.revokeObjectURL(url);
-  showToast("Library exported");
 }
 
 async function importLibrary(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
   try {
-    const text = await file.text();
-    const payload = JSON.parse(text);
-    const assets = Array.isArray(payload) ? payload : payload.assets;
-    if (!Array.isArray(assets)) throw new Error("No assets array found");
-
-    for (const imported of assets) {
-      const now = new Date().toISOString();
-      const asset = {
-        id: imported.id || makeId(),
-        name: imported.name || "Imported asset",
-        category: imported.category || "prop",
-        description: imported.description || "",
-        tags: Array.isArray(imported.tags) ? imported.tags : [],
-        notes: imported.notes || "",
-        imageBlob: await dataUrlToBlob(imported.imageDataUrl),
-        createdAt: imported.createdAt || now,
-        updatedAt: now
-      };
-      await saveAsset(asset);
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const payload = JSON.parse(await file.text());
+    for (const asset of payload.assets || payload) {
+      if (asset.name && categories.some(([value]) => value === asset.category)) await put(ASSET_STORE, { id: asset.id || makeId(), name: asset.name.trim(), category: asset.category });
     }
     await refreshAssets();
     showToast("Library imported");
-  } catch (error) {
-    console.error(error);
-    showToast("Import failed. Check the JSON file.");
-  } finally {
-    event.target.value = "";
-  }
+  } catch { showToast("Import failed"); }
+  event.target.value = "";
+}
+
+function setRoute(route) {
+  state.route = route;
+  render();
+  document.getElementById("app").focus();
 }
 
 function showToast(message) {
@@ -813,16 +299,29 @@ function showToast(message) {
   showToast.timeout = setTimeout(() => toast.classList.remove("show"), 2200);
 }
 
-function registerServiceWorker() {
-  if (!("serviceWorker" in navigator)) return;
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch((error) => {
-      console.warn("Service worker registration failed", error);
-    });
-  });
+async function updateBuildStatus() {
+  const status = document.getElementById("buildStatus");
+  status.textContent = `Build v5 · ${BUILD_INFO.commit || "local"}`;
+  if (!navigator.onLine) return;
+  try {
+    const response = await fetch("https://api.github.com/repos/sourmilkman/CafeMemeGen/commits/main");
+    const data = response.ok ? await response.json() : null;
+    if (data?.sha) status.textContent = `Build v5 · ${data.sha.slice(0, 7)}`;
+  } catch {}
+}
+
+async function init() {
+  await openDb();
+  await ensureLibrary();
+  await loadDraft();
+  state.draft.selectedAssetIds = state.draft.selectedAssetIds.filter((id) => state.assets.some((asset) => asset.id === id));
+  document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => setRoute(button.dataset.route)));
+  render();
+  updateBuildStatus();
+  if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js"));
 }
 
 init().catch((error) => {
   console.error(error);
-  document.getElementById("app").innerHTML = `<div class="empty">Meme Studio could not start. Refresh the page and try again.</div>`;
+  document.getElementById("app").innerHTML = `<div class="panel">CafeMeme could not start. Refresh and try again.</div>`;
 });
