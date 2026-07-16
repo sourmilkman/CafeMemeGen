@@ -139,11 +139,11 @@ function renderBuilder() {
     <form id="draftForm" class="builder-layout">
       <div class="panel asset-picker"><div class="panel-title"><h3>Included assets</h3><span>${state.draft.selectedAssetIds.length} selected</span></div>${categories.map(([category]) => renderSelector(category)).join("")}</div>
       <div class="panel grid sticky-composer">
-        <div class="field"><label for="jokeIdea">Meme idea</label><textarea id="jokeIdea" name="jokeIdea" required placeholder="What happens, and what makes it funny?">${escapeHtml(state.draft.jokeIdea)}</textarea></div>
-        <div class="field"><label for="dialogue">Dialogue <span>optional</span></label><textarea id="dialogue" name="dialogue" placeholder="Alex: ...">${escapeHtml(state.draft.dialogue)}</textarea></div>
-        <div class="field"><label for="caption">Caption <span>optional</span></label><textarea id="caption" name="caption" placeholder="Short, instantly readable caption">${escapeHtml(state.draft.caption)}</textarea></div>
+        <div class="field"><div class="field-heading"><label for="jokeIdea">Meme idea</label><button class="clear-button" type="button" data-clear-field="jokeIdea" aria-label="Clear meme idea">CLR</button></div><textarea id="jokeIdea" name="jokeIdea" required placeholder="What happens, and what makes it funny?">${escapeHtml(state.draft.jokeIdea)}</textarea></div>
+        <div class="field"><div class="field-heading"><label for="dialogue">Dialogue <span>optional</span></label><button class="clear-button" type="button" data-clear-field="dialogue" aria-label="Clear dialogue">CLR</button></div><textarea id="dialogue" name="dialogue" placeholder="Alex: ...">${escapeHtml(state.draft.dialogue)}</textarea></div>
+        <div class="field"><div class="field-heading"><label for="caption">Caption <span>optional</span></label><button class="clear-button" type="button" data-clear-field="caption" aria-label="Clear caption">CLR</button></div><textarea id="caption" name="caption" placeholder="Short, instantly readable caption">${escapeHtml(state.draft.caption)}</textarea></div>
         <div class="compact-grid">${renderSelect("format", "Format", formats, state.draft.format)}${renderSelect("aspectRatio", "Ratio", aspectRatios, state.draft.aspectRatio)}${renderSelect("tone", "Tone", tones, state.draft.tone)}</div>
-        <div class="field"><label for="extraInstructions">Anything else? <span>optional</span></label><textarea id="extraInstructions" name="extraInstructions" placeholder="Pose, expression, layout, background detail…">${escapeHtml(state.draft.extraInstructions)}</textarea></div>
+        <div class="field"><div class="field-heading"><label for="extraInstructions">Anything else? <span>optional</span></label><button class="clear-button" type="button" data-clear-field="extraInstructions" aria-label="Clear extra instructions">CLR</button></div><textarea id="extraInstructions" name="extraInstructions" placeholder="Pose, expression, layout, background detail…">${escapeHtml(state.draft.extraInstructions)}</textarea></div>
         <button class="button primary full" type="button" id="copyFromBuilder">Copy prompt</button>
         <button class="button full" type="button" id="openFromBuilder">Copy & open ChatGPT</button>
       </div>
@@ -154,7 +154,7 @@ function renderBuilder() {
 function renderLibrary() {
   return `<section class="screen">
     <div class="hero"><span class="eyebrow">LIBRARY</span><h2>Names, neatly organised.</h2><p>No uploads or long descriptions. Add sets, props and equipment only when you need them.</p></div>
-    <form id="assetForm" class="panel add-row"><div class="field"><label for="assetName">Asset name</label><input id="assetName" name="name" required placeholder="e.g. Cake counter"></div><div class="field"><label for="assetCategory">Type</label><select id="assetCategory" name="category">${categories.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></div><button class="button primary" type="submit">Add</button></form>
+    <form id="assetForm" class="panel add-row"><div class="field"><div class="field-heading"><label for="assetName">Asset name</label><button class="clear-button" type="button" data-clear-field="assetName" aria-label="Clear asset name">CLR</button></div><input id="assetName" name="name" required placeholder="e.g. Cake counter"></div><div class="field"><label for="assetCategory">Type</label><select id="assetCategory" name="category">${categories.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></div><button class="button primary" type="submit">Add</button></form>
     <div class="library-grid">${categories.map(([category, label]) => `<section class="panel name-list"><div class="panel-title"><h3>${label}</h3><span>${assetsFor(category).length}</span></div>${assetsFor(category).length ? assetsFor(category).map((asset) => `<div class="name-row"><span>${escapeHtml(asset.name)}</span><button type="button" data-delete-asset="${asset.id}" aria-label="Delete ${escapeHtml(asset.name)}">×</button></div>`).join("") : `<p class="empty-inline">Nothing added yet.</p>`}</section>`).join("")}</div>
   </section>`;
 }
@@ -165,7 +165,7 @@ function renderPrompt() {
 }
 
 function renderSettings() {
-  return `<section class="screen"><div class="hero"><span class="eyebrow">SETTINGS</span><h2>Local, private, installable.</h2><p>Your asset names and current draft stay on this device.</p></div><div class="panel grid settings-card"><button class="button primary full" id="exportLibrary" type="button">Export library JSON</button><label class="button full" for="importLibrary">Import library JSON</label><input hidden id="importLibrary" type="file" accept="application/json,.json"><p class="empty-inline">Use your browser menu to install the app. Build v5 · ${escapeHtml(BUILD_INFO.commit || "local")}</p></div></section>`;
+  return `<section class="screen"><div class="hero"><span class="eyebrow">SETTINGS</span><h2>Local, private, installable.</h2><p>Your asset names and current draft stay on this device.</p></div><div class="panel grid settings-card"><button class="button primary full" id="exportLibrary" type="button">Export library JSON</button><label class="button full" for="importLibrary">Import library JSON</label><input hidden id="importLibrary" type="file" accept="application/json,.json"><p class="empty-inline">Use your browser menu to install the app. Build v6 · ${escapeHtml(BUILD_INFO.commit || "local")}</p></div></section>`;
 }
 
 function render() {
@@ -175,6 +175,15 @@ function render() {
 }
 
 function bindScreenEvents() {
+  document.querySelectorAll("[data-clear-field]").forEach((button) => button.addEventListener("click", () => {
+    const field = document.getElementById(button.dataset.clearField);
+    if (!field) return;
+    field.value = "";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    field.focus();
+    showToast("Field cleared");
+  }));
+
   if (state.route === "builder") {
     document.getElementById("draftForm").addEventListener("input", async (event) => {
       if (!event.target.name) return;
@@ -301,12 +310,12 @@ function showToast(message) {
 
 async function updateBuildStatus() {
   const status = document.getElementById("buildStatus");
-  status.textContent = `Build v5 · ${BUILD_INFO.commit || "local"}`;
+  status.textContent = `Build v6 · ${BUILD_INFO.commit || "local"}`;
   if (!navigator.onLine) return;
   try {
     const response = await fetch("https://api.github.com/repos/sourmilkman/CafeMemeGen/commits/main");
     const data = response.ok ? await response.json() : null;
-    if (data?.sha) status.textContent = `Build v5 · ${data.sha.slice(0, 7)}`;
+    if (data?.sha) status.textContent = `Build v6 · ${data.sha.slice(0, 7)}`;
   } catch {}
 }
 
