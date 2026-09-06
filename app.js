@@ -15,7 +15,7 @@ const colleagueNames = [
   "Alex", "Anna", "Bea", "Bobbie", "Bryony", "Clarke", "Conrad", "Cormac", "Derega",
   "Emma", "Florence", "Hattie", "Henry", "Jane", "Jassy", "Jo", "Jono", "Kate",
   "Kristian", "Lillie", "Lisa", "Liz", "Manni", "Nicola", "Rachel", "Ricky", "Rosanna",
-  "Sam", "Twiggy", "Vicky", "Zoie", "Josh", "Lee", "Wendy"
+  "Sam", "Tom", "Twiggy", "Vicky", "Zoie", "Josh", "Lee", "Wendy"
 ];
 const formats = ["single-panel cartoon", "multi-panel comic", "fake advert", "poster", "Top Trumps card", "birthday card", "freeform"];
 const aspectRatios = ["square", "portrait", "landscape", "mobile story"];
